@@ -4,6 +4,19 @@
 
 An ultra-lightweight screenshot tool for Windows 11 with global hotkeys, a floating launcher, system tray control, startup integration, bilingual UI, and in-memory clipboard capture.
 
+## 下载
+
+- 最新版本下载：
+  [ScreenSnipper.exe](https://github.com/Darboux-hub/ScreenSnipper/releases/latest/download/ScreenSnipper.exe)
+- 最新 Release 页面：
+  [Releases](https://github.com/Darboux-hub/ScreenSnipper/releases)
+
+## 界面预览
+
+![ScreenSnipper Floating Button](assets/floating_button.png)
+
+当前版本采用图片化悬浮入口，启动后默认显示在主显示器中央，可拖动、可隐藏，并与系统托盘共用控制菜单。
+
 ## 功能特性
 
 - 全局热键触发截图
@@ -18,6 +31,55 @@ An ultra-lightweight screenshot tool for Windows 11 with global hotkeys, a float
 - 中英文界面切换，设置后立即生效
 - 热键自定义并支持冲突回滚
 - 使用 `PyInstaller` 打包单文件 EXE
+
+## 快速开始
+
+### 方式一：直接使用已打包 EXE
+
+1. 从 Release 页面下载 `ScreenSnipper.exe`
+2. 双击运行，程序会驻留后台并显示悬浮窗与托盘图标
+3. 通过悬浮窗左键或全局热键开始截图
+
+### 方式二：从源码运行
+
+```powershell
+pip install PyQt5
+python D:\ScreenShot\screen_snipper.py
+```
+
+## 使用说明
+
+### 截图入口
+
+- 左键点击悬浮窗开始截图
+- 或按下已配置的全局热键
+- 或通过系统托盘菜单点击 `截图`
+
+### 两种截图模式
+
+- `极简模式`
+  - 适合快速截图
+  - 鼠标松开后立即把选区写入剪贴板
+- `精调模式`
+  - 适合需要二次微调的场景
+  - 首次框选后保留冻结画面
+  - 支持拖动选区、拖边拖角缩放、重新框选
+  - 支持双击、回车或工具条 `完成` 按钮确认
+
+### 设置入口
+
+- 右键悬浮窗可打开菜单
+- 托盘图标右键也可打开同一套菜单
+- 通过 `设置...` 可统一调整：
+  - 中英文语言
+  - 截图模式
+  - 全局热键
+
+### 剪贴板行为
+
+- 程序全程在内存中处理截图，不会生成临时图片文件
+- 成功确认后，截图结果会直接写入系统剪贴板
+- 可直接粘贴到聊天窗口、画图工具、Office 或其它支持图片粘贴的软件中
 
 ## 运行环境
 
@@ -45,9 +107,7 @@ D:\ScreenShot\.build-venv\Scripts\python -m pip install PyQt5 pyinstaller
 python D:\ScreenShot\screen_snipper.py
 ```
 
-启动后程序会常驻后台，并显示悬浮窗与系统托盘图标。
-
-默认截图模式为 `精调模式`。如需更快的“一框即复制”流程，可在 `设置...` 中切换为 `极简模式`。
+启动后程序会常驻后台，并显示悬浮窗与系统托盘图标。默认截图模式为 `精调模式`；如需更快的“一框即复制”流程，可在 `设置...` 中切换为 `极简模式`。
 
 ## 打包 EXE
 
@@ -124,6 +184,10 @@ ScreenSnipper/
 ### 6. 为什么 GitHub 仓库里不建议提交 EXE？
 
 因为构建产物体积大、变更频繁，不利于源码仓库维护。更推荐用 GitHub Release 托管打包好的 EXE。
+
+## English Summary
+
+ScreenSnipper is a lightweight Windows 11 screenshot utility with a floating launcher, system tray controls, global hotkeys, bilingual UI, and in-memory clipboard capture. It now supports both `Minimal Mode` for instant copy and `Refine Mode` for post-selection adjustment before copying. Download the latest standalone executable from the Release page if you do not want to run it from source.
 
 ## 维护文档
 
