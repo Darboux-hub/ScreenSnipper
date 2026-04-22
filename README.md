@@ -1,18 +1,21 @@
 # ScreenSnipper
 
-一个面向 Windows 11 的轻量级截图工具，支持全局热键、悬浮窗、系统托盘、开机自启和直接写入剪贴板。
+一个面向 Windows 11 的轻量级截图工具，支持全局热键、悬浮窗、系统托盘、开机自启、中英文切换，以及直接写入剪贴板的截图流程。
 
-An ultra-lightweight screenshot tool for Windows 11 with global hotkeys, floating launcher, system tray control, startup integration, and in-memory clipboard output.
+An ultra-lightweight screenshot tool for Windows 11 with global hotkeys, a floating launcher, system tray control, startup integration, bilingual UI, and in-memory clipboard capture.
 
 ## 功能特性
 
 - 全局热键触发截图
 - 全屏冻结与拖拽框选
-- 截图结果直接写入系统剪贴板
+- `极简模式`：框选后立即复制到系统剪贴板
+- `精调模式`：框选后保留冻结画面，可继续调整选区再复制
 - 悬浮窗入口与系统托盘控制
 - 悬浮窗支持拖动、三档大小和图片 UI
 - 截图前自动隐藏悬浮窗，避免被截入结果
 - 开机自启动开关
+- 统一 `设置...` 窗口，支持语言、截图模式和热键管理
+- 中英文界面切换，设置后立即生效
 - 热键自定义并支持冲突回滚
 - 使用 `PyInstaller` 打包单文件 EXE
 
@@ -43,6 +46,8 @@ python D:\ScreenShot\screen_snipper.py
 ```
 
 启动后程序会常驻后台，并显示悬浮窗与系统托盘图标。
+
+默认截图模式为 `精调模式`。如需更快的“一框即复制”流程，可在 `设置...` 中切换为 `极简模式`。
 
 ## 打包 EXE
 
@@ -98,7 +103,7 @@ ScreenSnipper/
 
 ### 1. 为什么热键没有生效？
 
-可能是默认热键被其他程序占用了。此时程序仍可通过悬浮窗或托盘截图，并可在菜单中重新设置热键。
+可能是默认热键被其他程序占用了。此时程序仍可通过悬浮窗或托盘截图，并可在 `设置...` 中重新设置热键。
 
 ### 2. 为什么截图里没有悬浮窗？
 
@@ -112,7 +117,11 @@ ScreenSnipper/
 
 如果当前会话不支持系统托盘，程序会初始化失败。该工具设计为桌面交互式会话使用，不支持无托盘环境。
 
-### 5. 为什么 GitHub 仓库里不建议提交 EXE？
+### 5. 精调模式和极简模式有什么区别？
+
+`极简模式` 会在鼠标松开后立刻把选区写入剪贴板；`精调模式` 会保留冻结画面，允许你继续拖动、缩放或重选截图框，再通过双击、回车或工具条按钮确认。
+
+### 6. 为什么 GitHub 仓库里不建议提交 EXE？
 
 因为构建产物体积大、变更频繁，不利于源码仓库维护。更推荐用 GitHub Release 托管打包好的 EXE。
 

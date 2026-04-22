@@ -15,10 +15,11 @@ import winreg
 from ctypes import wintypes
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
+from typing import Callable, Optional
 
 from PyQt5.QtCore import (
     QAbstractNativeEventFilter,
+    QEvent,
     QObject,
     QPoint,
     QRect,
@@ -47,6 +48,9 @@ from PyQt5.QtWidgets import (
     QApplication,
     QDialog,
     QDialogButtonBox,
+    QComboBox,
+    QFormLayout,
+    QHBoxLayout,
     QLabel,
     QLineEdit,
     QMenu,
@@ -91,27 +95,124 @@ DIB_RGB_COLORS = 0
 
 BORDER_COLOR = QColor(0, 153, 255)
 MASK_COLOR = QColor(0, 0, 0, 120)
+HANDLE_FILL_COLOR = QColor(255, 255, 255)
 
 MIN_SELECTION_SIZE = 2
 FLOATING_DRAG_THRESHOLD = 4
+SELECTION_HANDLE_SIZE = 8
+SELECTION_HIT_MARGIN = 8
+TOOLBAR_GAP = 12
 
 FLOATING_BUTTON_ASSET_RELATIVE = Path("assets") / "floating_button.png"
 TRAY_ICON_SIZES = (16, 20, 24, 32, 40, 48, 64)
 
 FLOATING_SIZE_PRESETS = {
-    "small": {"label": "小", "longest_edge": 120},
-    "medium": {"label": "中", "longest_edge": 160},
-    "large": {"label": "大", "longest_edge": 200},
+    "small": {"longest_edge": 88},
+    "medium": {"longest_edge": 120},
+    "large": {"longest_edge": 160},
 }
 DEFAULT_FLOATING_SIZE_PRESET = "small"
+SUPPORTED_UI_LANGUAGES = ("zh_CN", "en_US")
+DEFAULT_UI_LANGUAGE = "zh_CN"
+SUPPORTED_CAPTURE_MODES = ("minimal", "refine")
+DEFAULT_CAPTURE_MODE = "refine"
 
 FLOATING_POSITION_KEY = "floating_button/position"
 FLOATING_SIZE_PRESET_KEY = "floating_button/size_preset"
 FLOATING_LAYOUT_INITIALIZED_V2_KEY = "floating_button/layout_initialized_v2"
+UI_LANGUAGE_KEY = "ui/language"
+CAPTURE_MODE_KEY = "capture/mode"
 HOTKEY_MODIFIERS_KEY = "hotkey/modifiers"
 HOTKEY_VK_KEY = "hotkey/virtual_key"
 HOTKEY_TEXT_KEY = "hotkey/display_text"
 AUTOSTART_INITIALIZED_KEY = "autostart/initialized"
+
+UI_TEXTS = {
+    "zh_CN": {
+        "menu.capture": "截图",
+        "menu.toggle_button.show": "显示悬浮按钮",
+        "menu.toggle_button.hide": "隐藏悬浮按钮",
+        "menu.size": "悬浮窗大小",
+        "menu.size.small": "小",
+        "menu.size.medium": "中",
+        "menu.size.large": "大",
+        "menu.autostart": "开机启动",
+        "menu.settings": "设置...",
+        "menu.exit": "退出",
+        "tooltip.floating_button": "左键截图，拖动可移动，右键打开菜单",
+        "dialog.settings.title": "设置",
+        "dialog.settings.language": "界面语言",
+        "dialog.settings.capture_mode": "截图模式",
+        "dialog.settings.hotkey_title": "截图热键",
+        "dialog.settings.current_hotkey": "当前热键：{hotkey}",
+        "dialog.settings.current_hotkey_inactive": "当前热键：{hotkey}（未激活）",
+        "dialog.settings.hotkey_hint": "点击下方输入框后直接按下新的快捷键，仅支持 Ctrl / Alt / Shift + 一个主键。",
+        "dialog.settings.hotkey_placeholder": "按下新的快捷键",
+        "dialog.settings.hotkey_preview": "新的热键：{hotkey}",
+        "dialog.settings.restore_default": "恢复默认",
+        "dialog.ok": "确定",
+        "dialog.cancel": "取消",
+        "dialog.settings.language.zh_CN": "中文",
+        "dialog.settings.language.en_US": "English",
+        "capture_mode.minimal.name": "极简模式",
+        "capture_mode.minimal.description": "框选后立即复制",
+        "capture_mode.refine.name": "精调模式",
+        "capture_mode.refine.description": "框选后可继续调整后再复制",
+        "overlay.confirm": "完成",
+        "overlay.cancel": "取消",
+        "overlay.hint": "可拖动调整，双击或回车完成",
+        "message.hotkey_unavailable": "无法注册当前热键 {hotkey}。\n你仍可通过悬浮窗或系统托盘进行截图，并可在“设置...”中改为其他组合键。",
+        "error.asset_missing": "找不到悬浮窗图片资源：{path}",
+        "error.asset_load_failed": "悬浮窗图片资源加载失败。",
+        "error.asset_process_failed": "悬浮窗图片资源处理失败。",
+        "error.tray_unavailable": "当前系统会话不支持系统托盘。",
+        "error.autostart_update_failed": "更新开机启动设置失败。",
+        "error.hotkey_conflict": "热键 {hotkey} 已被其他程序占用，请选择其他组合键。",
+        "error.initialization_failed": "程序初始化失败：{error}",
+    },
+    "en_US": {
+        "menu.capture": "Capture",
+        "menu.toggle_button.show": "Show Floating Button",
+        "menu.toggle_button.hide": "Hide Floating Button",
+        "menu.size": "Floating Button Size",
+        "menu.size.small": "Small",
+        "menu.size.medium": "Medium",
+        "menu.size.large": "Large",
+        "menu.autostart": "Launch at Startup",
+        "menu.settings": "Settings...",
+        "menu.exit": "Exit",
+        "tooltip.floating_button": "Left-click to capture, drag to move, right-click for menu",
+        "dialog.settings.title": "Settings",
+        "dialog.settings.language": "Interface Language",
+        "dialog.settings.capture_mode": "Capture Mode",
+        "dialog.settings.hotkey_title": "Screenshot Hotkey",
+        "dialog.settings.current_hotkey": "Current hotkey: {hotkey}",
+        "dialog.settings.current_hotkey_inactive": "Current hotkey: {hotkey} (inactive)",
+        "dialog.settings.hotkey_hint": "Click the input box below, then press a new shortcut. Only Ctrl / Alt / Shift + one main key is supported.",
+        "dialog.settings.hotkey_placeholder": "Press a new hotkey",
+        "dialog.settings.hotkey_preview": "New hotkey: {hotkey}",
+        "dialog.settings.restore_default": "Restore Default",
+        "dialog.ok": "OK",
+        "dialog.cancel": "Cancel",
+        "dialog.settings.language.zh_CN": "中文",
+        "dialog.settings.language.en_US": "English",
+        "capture_mode.minimal.name": "Minimal Mode",
+        "capture_mode.minimal.description": "Copy immediately after selection",
+        "capture_mode.refine.name": "Refine Mode",
+        "capture_mode.refine.description": "Adjust the selection before copying",
+        "overlay.confirm": "Done",
+        "overlay.cancel": "Cancel",
+        "overlay.hint": "Drag to adjust. Double-click or press Enter to finish.",
+        "message.hotkey_unavailable": "Unable to register the current hotkey {hotkey}.\nYou can still capture via the floating button or tray menu, and change it from Settings...",
+        "error.asset_missing": "Floating button image resource not found: {path}",
+        "error.asset_load_failed": "Failed to load the floating button image resource.",
+        "error.asset_process_failed": "Failed to process the floating button image resource.",
+        "error.tray_unavailable": "The current Windows session does not support the system tray.",
+        "error.autostart_update_failed": "Failed to update the startup setting.",
+        "error.hotkey_conflict": "The hotkey {hotkey} is already in use by another application. Please choose a different shortcut.",
+        "error.initialization_failed": "Initialization failed: {error}",
+    },
+}
 
 
 user32 = ctypes.windll.user32
@@ -290,6 +391,36 @@ def default_hotkey() -> HotkeyConfig:
 
 def normalize_size_preset(preset: str) -> str:
     return preset if preset in FLOATING_SIZE_PRESETS else DEFAULT_FLOATING_SIZE_PRESET
+
+
+def normalize_ui_language(language: str) -> str:
+    return language if language in SUPPORTED_UI_LANGUAGES else DEFAULT_UI_LANGUAGE
+
+
+def normalize_capture_mode(mode: str) -> str:
+    return mode if mode in SUPPORTED_CAPTURE_MODES else DEFAULT_CAPTURE_MODE
+
+
+def tr(language: str, key: str, **kwargs) -> str:
+    language = normalize_ui_language(language)
+    template = UI_TEXTS.get(language, {}).get(key) or UI_TEXTS[DEFAULT_UI_LANGUAGE].get(key) or key
+    return template.format(**kwargs)
+
+
+def current_ui_language() -> str:
+    settings = create_settings()
+    value = str(settings.value(UI_LANGUAGE_KEY, DEFAULT_UI_LANGUAGE, type=str) or "")
+    return normalize_ui_language(value)
+
+
+def current_tr(key: str, **kwargs) -> str:
+    return tr(current_ui_language(), key, **kwargs)
+
+
+def capture_mode_label(language: str, mode: str) -> str:
+    mode = normalize_capture_mode(mode)
+    separator = "：" if normalize_ui_language(language) == "zh_CN" else ": "
+    return f"{tr(language, f'capture_mode.{mode}.name')}{separator}{tr(language, f'capture_mode.{mode}.description')}"
 
 
 def current_runtime_base_path() -> Path:
@@ -563,15 +694,15 @@ def resolve_floating_position(saved_position: Optional[QPoint], size: QSize) -> 
 class FloatingImageAsset:
     def __init__(self, asset_path: Path) -> None:
         if not asset_path.exists():
-            raise RuntimeError(f"找不到悬浮窗图片资源：{asset_path}")
+            raise RuntimeError(current_tr("error.asset_missing", path=asset_path))
 
         image = QImage(str(asset_path))
         if image.isNull():
-            raise RuntimeError("悬浮窗图片资源加载失败。")
+            raise RuntimeError(current_tr("error.asset_load_failed"))
 
         self._cropped_image = crop_transparent_image(image)
         if self._cropped_image.isNull():
-            raise RuntimeError("悬浮窗图片资源处理失败。")
+            raise RuntimeError(current_tr("error.asset_process_failed"))
 
         self._tray_icon = build_icon_from_image(self._cropped_image)
 
@@ -604,6 +735,22 @@ class SettingsManager:
 
     def save_size_preset(self, preset: str) -> None:
         self._settings.setValue(FLOATING_SIZE_PRESET_KEY, normalize_size_preset(preset))
+        self._settings.sync()
+
+    def load_ui_language(self) -> str:
+        value = str(self._settings.value(UI_LANGUAGE_KEY, DEFAULT_UI_LANGUAGE, type=str) or "")
+        return normalize_ui_language(value)
+
+    def save_ui_language(self, language: str) -> None:
+        self._settings.setValue(UI_LANGUAGE_KEY, normalize_ui_language(language))
+        self._settings.sync()
+
+    def load_capture_mode(self) -> str:
+        value = str(self._settings.value(CAPTURE_MODE_KEY, DEFAULT_CAPTURE_MODE, type=str) or "")
+        return normalize_capture_mode(value)
+
+    def save_capture_mode(self, mode: str) -> None:
+        self._settings.setValue(CAPTURE_MODE_KEY, normalize_capture_mode(mode))
         self._settings.sync()
 
     def is_layout_initialized_v2(self) -> bool:
@@ -795,13 +942,17 @@ class SelectionOverlay(QWidget):
     selectionFinished = pyqtSignal(QPixmap)
     selectionCanceled = pyqtSignal()
 
-    def __init__(self, background: QPixmap, desktop_rect: QRect) -> None:
+    def __init__(self, background: QPixmap, desktop_rect: QRect, capture_mode: str, language: str) -> None:
         super().__init__(None)
         self._background = background
         self._desktop_rect = QRect(desktop_rect)
-        self._dragging = False
+        self._capture_mode = normalize_capture_mode(capture_mode)
+        self._language = normalize_ui_language(language)
+        self._interaction = "idle"
+        self._resize_region = "none"
         self._start_point = QPoint()
-        self._end_point = QPoint()
+        self._interaction_start_rect = QRect()
+        self._previous_selection_rect = QRect()
         self._selection_rect = QRect()
 
         self.setWindowFlags(
@@ -813,6 +964,53 @@ class SelectionOverlay(QWidget):
         self.setFocusPolicy(Qt.StrongFocus)
         self.setCursor(QCursor(Qt.CrossCursor))
         self.setGeometry(self._desktop_rect)
+
+        self._toolbar = QWidget(self)
+        self._toolbar.setObjectName("overlayToolbar")
+        self._toolbar.setStyleSheet(
+            """
+            QWidget#overlayToolbar {
+                background-color: rgba(28, 31, 36, 220);
+                border: 1px solid rgba(255, 255, 255, 60);
+                border-radius: 10px;
+            }
+            QLabel#overlayHintLabel {
+                color: white;
+            }
+            QPushButton {
+                color: white;
+                background-color: rgba(255, 255, 255, 24);
+                border: 1px solid rgba(255, 255, 255, 70);
+                border-radius: 6px;
+                padding: 4px 10px;
+            }
+            QPushButton:hover {
+                background-color: rgba(255, 255, 255, 42);
+            }
+            """
+        )
+        toolbar_layout = QHBoxLayout(self._toolbar)
+        toolbar_layout.setContentsMargins(12, 8, 12, 8)
+        toolbar_layout.setSpacing(10)
+
+        self._hint_label = QLabel(self._toolbar)
+        self._hint_label.setObjectName("overlayHintLabel")
+        self._confirm_button = QPushButton(self._toolbar)
+        self._cancel_button = QPushButton(self._toolbar)
+        self._confirm_button.setFocusPolicy(Qt.NoFocus)
+        self._cancel_button.setFocusPolicy(Qt.NoFocus)
+        self._hint_label.setWordWrap(False)
+        toolbar_layout.addWidget(self._hint_label)
+        toolbar_layout.addWidget(self._confirm_button)
+        toolbar_layout.addWidget(self._cancel_button)
+        self._confirm_button.clicked.connect(self._confirm_selection)
+        self._cancel_button.clicked.connect(self._cancel)
+
+        for widget in (self._toolbar, self._hint_label, self._confirm_button, self._cancel_button):
+            widget.installEventFilter(self)
+
+        self._update_toolbar_texts()
+        self._toolbar.hide()
 
     def showEvent(self, event) -> None:
         super().showEvent(event)
@@ -831,10 +1029,15 @@ class SelectionOverlay(QWidget):
         painter.drawPixmap(0, 0, self._background)
         painter.fillRect(self.rect(), MASK_COLOR)
 
-        if not self._selection_rect.isNull():
+        if self._has_valid_selection():
             painter.drawPixmap(self._selection_rect, self._background, self._selection_rect)
             painter.setPen(QPen(BORDER_COLOR, 2))
             painter.drawRect(self._selection_rect.adjusted(0, 0, -1, -1))
+            if self._capture_mode == "refine":
+                painter.setPen(QPen(BORDER_COLOR, 1))
+                painter.setBrush(HANDLE_FILL_COLOR)
+                for handle_rect in self._handle_rects():
+                    painter.drawRect(handle_rect)
 
     def mousePressEvent(self, event: QMouseEvent) -> None:
         if event.button() == Qt.RightButton:
@@ -843,48 +1046,274 @@ class SelectionOverlay(QWidget):
         if event.button() != Qt.LeftButton:
             return
 
-        self._dragging = True
-        self._start_point = event.pos()
-        self._end_point = event.pos()
-        self._selection_rect = QRect(self._start_point, self._end_point).normalized()
+        local_pos = self._clamp_point(event.pos())
+        self._start_point = local_pos
+        self._interaction_start_rect = QRect(self._selection_rect)
+        self._previous_selection_rect = QRect(self._selection_rect)
+        self._resize_region = "none"
+
+        if self._capture_mode == "refine" and self._has_valid_selection():
+            hit_region = self._hit_test_region(local_pos)
+            if hit_region == "move":
+                self._interaction = "move"
+                self._toolbar.hide()
+                event.accept()
+                return
+            if hit_region != "none":
+                self._interaction = "resize"
+                self._resize_region = hit_region
+                self._toolbar.hide()
+                event.accept()
+                return
+
+        self._interaction = "draw"
+        self._selection_rect = QRect(local_pos, local_pos).normalized()
+        self._toolbar.hide()
         self.update()
+        event.accept()
 
     def mouseMoveEvent(self, event: QMouseEvent) -> None:
-        if not self._dragging:
+        local_pos = self._clamp_point(event.pos())
+        if self._interaction == "idle":
+            self._update_cursor(local_pos)
             return
 
-        self._end_point = event.pos()
-        self._selection_rect = QRect(self._start_point, self._end_point).normalized()
+        if self._interaction == "draw":
+            self._selection_rect = QRect(self._start_point, local_pos).normalized()
+        elif self._interaction == "move":
+            delta = local_pos - self._start_point
+            self._selection_rect = self._translated_rect(self._interaction_start_rect, delta)
+        elif self._interaction == "resize":
+            self._selection_rect = self._resized_rect(self._interaction_start_rect, local_pos, self._resize_region)
+
+        self._update_toolbar_geometry()
         self.update()
+        event.accept()
 
     def mouseReleaseEvent(self, event: QMouseEvent) -> None:
         if event.button() == Qt.RightButton:
             self._cancel()
             return
-        if event.button() != Qt.LeftButton or not self._dragging:
+        if event.button() != Qt.LeftButton or self._interaction == "idle":
             return
 
-        self._dragging = False
-        self._end_point = event.pos()
-        self._selection_rect = QRect(self._start_point, self._end_point).normalized()
+        local_pos = self._clamp_point(event.pos())
+        if self._interaction == "draw":
+            self._selection_rect = QRect(self._start_point, local_pos).normalized()
+            if not self._has_valid_selection():
+                if self._capture_mode == "minimal":
+                    self._cancel()
+                    return
+                if self._is_valid_rect(self._previous_selection_rect):
+                    self._selection_rect = QRect(self._previous_selection_rect)
+                    self._show_toolbar_if_needed()
+                else:
+                    self._selection_rect = QRect()
+                    self._toolbar.hide()
+                self._interaction = "idle"
+                self._update_cursor(local_pos)
+                self.update()
+                return
 
+            if self._capture_mode == "minimal":
+                self._interaction = "idle"
+                self._confirm_selection()
+                return
+
+            self._show_toolbar_if_needed()
+
+        elif self._capture_mode == "refine":
+            self._show_toolbar_if_needed()
+
+        self._interaction = "idle"
+        self._update_cursor(local_pos)
+        self.update()
+
+    def mouseDoubleClickEvent(self, event: QMouseEvent) -> None:
         if (
-            self._selection_rect.width() < MIN_SELECTION_SIZE
-            or self._selection_rect.height() < MIN_SELECTION_SIZE
+            event.button() == Qt.LeftButton
+            and self._capture_mode == "refine"
+            and self._has_valid_selection()
+            and self._selection_rect.contains(event.pos())
         ):
-            self._cancel()
+            self._confirm_selection()
+            event.accept()
             return
-
-        self.selectionFinished.emit(self._background.copy(self._selection_rect))
+        super().mouseDoubleClickEvent(event)
 
     def keyPressEvent(self, event: QKeyEvent) -> None:
         if event.key() == Qt.Key_Escape:
             self._cancel()
             return
+        if (
+            self._capture_mode == "refine"
+            and event.key() in (Qt.Key_Return, Qt.Key_Enter)
+            and self._has_valid_selection()
+        ):
+            self._confirm_selection()
+            return
         super().keyPressEvent(event)
 
+    def eventFilter(self, watched, event) -> bool:
+        if event.type() == QEvent.MouseButtonPress and isinstance(event, QMouseEvent) and event.button() == Qt.RightButton:
+            self._cancel()
+            return True
+        return super().eventFilter(watched, event)
+
     def _cancel(self) -> None:
+        self._toolbar.hide()
         self.selectionCanceled.emit()
+
+    def _confirm_selection(self) -> None:
+        if not self._has_valid_selection():
+            return
+        self.selectionFinished.emit(self._background.copy(self._selection_rect))
+
+    def _update_toolbar_texts(self) -> None:
+        self._hint_label.setText(tr(self._language, "overlay.hint"))
+        self._confirm_button.setText(tr(self._language, "overlay.confirm"))
+        self._cancel_button.setText(tr(self._language, "overlay.cancel"))
+        self._toolbar.adjustSize()
+
+    def _show_toolbar_if_needed(self) -> None:
+        if self._capture_mode != "refine" or not self._has_valid_selection():
+            self._toolbar.hide()
+            return
+        self._update_toolbar_geometry()
+        self._toolbar.show()
+        self._toolbar.raise_()
+
+    def _update_toolbar_geometry(self) -> None:
+        if self._capture_mode != "refine" or not self._has_valid_selection():
+            self._toolbar.hide()
+            return
+
+        size_hint = self._toolbar.sizeHint()
+        width = size_hint.width()
+        height = size_hint.height()
+        target_x = self._selection_rect.center().x() - width // 2
+        above_y = self._selection_rect.top() - height - TOOLBAR_GAP
+        below_y = self._selection_rect.bottom() + TOOLBAR_GAP + 1
+        if above_y >= 0:
+            target_y = above_y
+        else:
+            target_y = min(max(0, below_y), max(0, self.height() - height))
+        target_x = max(0, min(target_x, max(0, self.width() - width)))
+        self._toolbar.setGeometry(target_x, target_y, width, height)
+
+    def _has_valid_selection(self) -> bool:
+        return self._is_valid_rect(self._selection_rect)
+
+    @staticmethod
+    def _is_valid_rect(rect: QRect) -> bool:
+        return rect.width() >= MIN_SELECTION_SIZE and rect.height() >= MIN_SELECTION_SIZE
+
+    def _clamp_point(self, point: QPoint) -> QPoint:
+        max_x = max(0, self.width() - 1)
+        max_y = max(0, self.height() - 1)
+        return QPoint(max(0, min(point.x(), max_x)), max(0, min(point.y(), max_y)))
+
+    def _translated_rect(self, rect: QRect, delta: QPoint) -> QRect:
+        width = rect.width()
+        height = rect.height()
+        max_left = max(0, self.width() - width)
+        max_top = max(0, self.height() - height)
+        left = max(0, min(rect.left() + delta.x(), max_left))
+        top = max(0, min(rect.top() + delta.y(), max_top))
+        return QRect(left, top, width, height)
+
+    def _resized_rect(self, rect: QRect, point: QPoint, region: str) -> QRect:
+        left, top, right, bottom = rect.left(), rect.top(), rect.right(), rect.bottom()
+        min_span = MIN_SELECTION_SIZE - 1
+        max_x = max(0, self.width() - 1)
+        max_y = max(0, self.height() - 1)
+
+        if "left" in region:
+            left = max(0, min(point.x(), right - min_span))
+        if "right" in region:
+            right = min(max_x, max(point.x(), left + min_span))
+        if "top" in region:
+            top = max(0, min(point.y(), bottom - min_span))
+        if "bottom" in region:
+            bottom = min(max_y, max(point.y(), top + min_span))
+
+        return QRect(QPoint(left, top), QPoint(right, bottom)).normalized()
+
+    def _handle_points(self) -> list[QPoint]:
+        rect = self._selection_rect
+        return [
+            QPoint(rect.left(), rect.top()),
+            QPoint(rect.center().x(), rect.top()),
+            QPoint(rect.right(), rect.top()),
+            QPoint(rect.right(), rect.center().y()),
+            QPoint(rect.right(), rect.bottom()),
+            QPoint(rect.center().x(), rect.bottom()),
+            QPoint(rect.left(), rect.bottom()),
+            QPoint(rect.left(), rect.center().y()),
+        ]
+
+    def _handle_rects(self) -> list[QRect]:
+        half = SELECTION_HANDLE_SIZE // 2
+        rects = []
+        for point in self._handle_points():
+            rects.append(QRect(point.x() - half, point.y() - half, SELECTION_HANDLE_SIZE, SELECTION_HANDLE_SIZE))
+        return rects
+
+    def _hit_test_region(self, point: QPoint) -> str:
+        if not self._has_valid_selection():
+            return "none"
+
+        rect = self._selection_rect
+        margin = SELECTION_HIT_MARGIN
+        outer_rect = rect.adjusted(-margin, -margin, margin, margin)
+        if not outer_rect.contains(point):
+            return "none"
+
+        near_left = abs(point.x() - rect.left()) <= margin
+        near_right = abs(point.x() - rect.right()) <= margin
+        near_top = abs(point.y() - rect.top()) <= margin
+        near_bottom = abs(point.y() - rect.bottom()) <= margin
+        inside_x = rect.left() <= point.x() <= rect.right()
+        inside_y = rect.top() <= point.y() <= rect.bottom()
+
+        if near_left and near_top:
+            return "top_left"
+        if near_right and near_top:
+            return "top_right"
+        if near_left and near_bottom:
+            return "bottom_left"
+        if near_right and near_bottom:
+            return "bottom_right"
+        if near_left and inside_y:
+            return "left"
+        if near_right and inside_y:
+            return "right"
+        if near_top and inside_x:
+            return "top"
+        if near_bottom and inside_x:
+            return "bottom"
+        if rect.contains(point):
+            return "move"
+        return "none"
+
+    def _update_cursor(self, point: QPoint) -> None:
+        if self._capture_mode != "refine" or not self._has_valid_selection():
+            self.setCursor(QCursor(Qt.CrossCursor))
+            return
+
+        region = self._hit_test_region(point)
+        cursor_shape = Qt.CrossCursor
+        if region == "move":
+            cursor_shape = Qt.SizeAllCursor
+        elif region in ("left", "right"):
+            cursor_shape = Qt.SizeHorCursor
+        elif region in ("top", "bottom"):
+            cursor_shape = Qt.SizeVerCursor
+        elif region in ("top_left", "bottom_right"):
+            cursor_shape = Qt.SizeFDiagCursor
+        elif region in ("top_right", "bottom_left"):
+            cursor_shape = Qt.SizeBDiagCursor
+        self.setCursor(QCursor(cursor_shape))
 
 
 class ScreenCaptureController(QObject):
@@ -898,7 +1327,7 @@ class ScreenCaptureController(QObject):
     def is_capturing(self) -> bool:
         return self._overlay is not None
 
-    def start_capture(self) -> bool:
+    def start_capture(self, capture_mode: str, language: str) -> bool:
         if self._cleaned_up or self._overlay is not None:
             return False
 
@@ -909,7 +1338,7 @@ class ScreenCaptureController(QObject):
             print(f"Unable to capture the screen: {exc}", file=sys.stderr)
             return False
 
-        self._overlay = SelectionOverlay(background, desktop_rect)
+        self._overlay = SelectionOverlay(background, desktop_rect, capture_mode, language)
         self._overlay.selectionFinished.connect(self._finish_capture)
         self._overlay.selectionCanceled.connect(self._cancel_capture)
         self._overlay.destroyed.connect(self._overlay_destroyed)
@@ -949,12 +1378,12 @@ class ScreenCaptureController(QObject):
 class HotkeyCaptureEdit(QLineEdit):
     hotkeyCaptured = pyqtSignal(object)
 
-    def __init__(self, initial_text: str, parent: Optional[QWidget] = None) -> None:
+    def __init__(self, initial_text: str, placeholder_text: str, parent: Optional[QWidget] = None) -> None:
         super().__init__(parent)
         self.setReadOnly(True)
         self.setFocusPolicy(Qt.StrongFocus)
         self.setText(initial_text)
-        self.setPlaceholderText("按下新的快捷键")
+        self.setPlaceholderText(placeholder_text)
 
     def keyPressEvent(self, event: QKeyEvent) -> None:
         event.accept()
@@ -969,62 +1398,113 @@ class HotkeyCaptureEdit(QLineEdit):
         self.hotkeyCaptured.emit(hotkey)
 
 
-class HotkeySettingsDialog(QDialog):
-    def __init__(self, current_hotkey: HotkeyConfig, parent: Optional[QWidget] = None) -> None:
+class SettingsDialog(QDialog):
+    def __init__(
+        self,
+        current_language: str,
+        current_capture_mode: str,
+        current_hotkey: HotkeyConfig,
+        hotkey_registered: bool,
+        hotkey_apply_callback: Callable[[HotkeyConfig], bool],
+        parent: Optional[QWidget] = None,
+    ) -> None:
         super().__init__(parent)
+        self._language = normalize_ui_language(current_language)
+        self._capture_mode = normalize_capture_mode(current_capture_mode)
         self._current_hotkey = current_hotkey.normalized()
         self._selected_hotkey = self._current_hotkey
+        self._hotkey_registered = hotkey_registered
+        self._hotkey_apply_callback = hotkey_apply_callback
 
-        self.setWindowTitle("设置截图热键")
+        self.setWindowTitle(tr(self._language, "dialog.settings.title"))
         self.setModal(True)
         self.setWindowFlag(Qt.WindowContextHelpButtonHint, False)
-        self.setMinimumWidth(360)
+        self.setMinimumWidth(420)
 
-        self._current_label = QLabel(f"当前热键：{self._current_hotkey.display_text}")
+        form_layout = QFormLayout()
+        form_layout.setSpacing(10)
+
+        self._language_combo = QComboBox(self)
+        for language in SUPPORTED_UI_LANGUAGES:
+            self._language_combo.addItem(tr(self._language, f"dialog.settings.language.{language}"), language)
+        self._language_combo.setCurrentIndex(self._language_combo.findData(self._language))
+
+        self._capture_mode_combo = QComboBox(self)
+        for mode in SUPPORTED_CAPTURE_MODES:
+            self._capture_mode_combo.addItem(capture_mode_label(self._language, mode), mode)
+        self._capture_mode_combo.setCurrentIndex(self._capture_mode_combo.findData(self._capture_mode))
+
+        form_layout.addRow(tr(self._language, "dialog.settings.language"), self._language_combo)
+        form_layout.addRow(tr(self._language, "dialog.settings.capture_mode"), self._capture_mode_combo)
+
+        hotkey_key = "dialog.settings.current_hotkey" if self._hotkey_registered else "dialog.settings.current_hotkey_inactive"
+        self._hotkey_title = QLabel(tr(self._language, "dialog.settings.hotkey_title"))
+        self._current_label = QLabel(tr(self._language, hotkey_key, hotkey=self._current_hotkey.display_text))
         self._current_label.setWordWrap(True)
+        self._hotkey_title.setStyleSheet("font-weight: 600;")
 
-        self._hint_label = QLabel(
-            "点击下方输入框后直接按下新的快捷键，仅支持 Ctrl / Alt / Shift + 一个主键。"
-        )
+        self._hint_label = QLabel(tr(self._language, "dialog.settings.hotkey_hint"))
         self._hint_label.setWordWrap(True)
 
-        self._capture_edit = HotkeyCaptureEdit(self._current_hotkey.display_text, self)
+        self._capture_edit = HotkeyCaptureEdit(
+            self._current_hotkey.display_text,
+            tr(self._language, "dialog.settings.hotkey_placeholder"),
+            self,
+        )
         self._capture_edit.hotkeyCaptured.connect(self._on_hotkey_captured)
 
-        self._preview_label = QLabel(f"新的热键：{self._selected_hotkey.display_text}")
+        self._preview_label = QLabel(tr(self._language, "dialog.settings.hotkey_preview", hotkey=self._selected_hotkey.display_text))
         self._preview_label.setWordWrap(True)
 
-        restore_button = QPushButton("恢复默认")
-        restore_button.clicked.connect(self._restore_default)
+        self._restore_button = QPushButton(tr(self._language, "dialog.settings.restore_default"))
+        self._restore_button.clicked.connect(self._restore_default)
 
         button_box = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
-        button_box.addButton(restore_button, QDialogButtonBox.ResetRole)
-        button_box.accepted.connect(self.accept)
+        button_box.addButton(self._restore_button, QDialogButtonBox.ResetRole)
+        button_box.button(QDialogButtonBox.Ok).setText(tr(self._language, "dialog.ok"))
+        button_box.button(QDialogButtonBox.Cancel).setText(tr(self._language, "dialog.cancel"))
+        button_box.accepted.connect(self._accept_with_validation)
         button_box.rejected.connect(self.reject)
 
         layout = QVBoxLayout(self)
+        layout.addLayout(form_layout)
+        layout.addSpacing(6)
+        layout.addWidget(self._hotkey_title)
         layout.addWidget(self._current_label)
         layout.addWidget(self._hint_label)
         layout.addWidget(self._capture_edit)
         layout.addWidget(self._preview_label)
         layout.addWidget(button_box)
 
+    def selected_language(self) -> str:
+        return normalize_ui_language(str(self._language_combo.currentData() or self._language))
+
+    def selected_capture_mode(self) -> str:
+        return normalize_capture_mode(str(self._capture_mode_combo.currentData() or self._capture_mode))
+
     def selected_hotkey(self) -> HotkeyConfig:
         return self._selected_hotkey.normalized()
 
-    def showEvent(self, event) -> None:
-        super().showEvent(event)
-        self._capture_edit.setFocus(Qt.ActiveWindowFocusReason)
-        self._capture_edit.selectAll()
-
     def _on_hotkey_captured(self, hotkey: HotkeyConfig) -> None:
         self._selected_hotkey = hotkey.normalized()
-        self._preview_label.setText(f"新的热键：{self._selected_hotkey.display_text}")
+        self._preview_label.setText(
+            tr(self._language, "dialog.settings.hotkey_preview", hotkey=self._selected_hotkey.display_text)
+        )
 
     def _restore_default(self) -> None:
         self._selected_hotkey = default_hotkey()
         self._capture_edit.setText(self._selected_hotkey.display_text)
-        self._preview_label.setText(f"新的热键：{self._selected_hotkey.display_text}")
+        self._preview_label.setText(
+            tr(self._language, "dialog.settings.hotkey_preview", hotkey=self._selected_hotkey.display_text)
+        )
+
+    def _accept_with_validation(self) -> None:
+        hotkey = self.selected_hotkey()
+        should_apply_hotkey = hotkey != self._current_hotkey or not self._hotkey_registered
+        if should_apply_hotkey and not self._hotkey_apply_callback(hotkey):
+            show_error_dialog(tr(self._language, "error.hotkey_conflict", hotkey=hotkey.display_text))
+            return
+        self.accept()
 
 
 class FloatingButton(QWidget):
@@ -1053,7 +1533,7 @@ class FloatingButton(QWidget):
         self.setAttribute(Qt.WA_TranslucentBackground, True)
         self.setAttribute(Qt.WA_ShowWithoutActivating, True)
         self.setCursor(QCursor(Qt.PointingHandCursor))
-        self.setToolTip("左键截图，拖动可移动，右键打开菜单")
+        self.setToolTip(current_tr("tooltip.floating_button"))
         self.apply_size_preset(size_preset)
 
     @property
@@ -1153,10 +1633,12 @@ class TrayApp(QObject):
     def __init__(self, app: QApplication) -> None:
         super().__init__()
         if not QSystemTrayIcon.isSystemTrayAvailable():
-            raise RuntimeError("当前系统会话不支持系统托盘。")
+            raise RuntimeError(current_tr("error.tray_unavailable"))
 
         self._app = app
         self._settings_manager = SettingsManager()
+        self._language = self._settings_manager.load_ui_language()
+        self._capture_mode = self._settings_manager.load_capture_mode()
         self._floating_asset = FloatingImageAsset(resolve_resource_path(FLOATING_BUTTON_ASSET_RELATIVE))
         self._autostart_manager = AutostartManager(self._settings_manager)
         self._hotkey_manager = GlobalHotkeyManager(app)
@@ -1169,33 +1651,32 @@ class TrayApp(QObject):
         self._tray_icon = QSystemTrayIcon(self._build_icon(), self)
         self._tray_icon.setToolTip(APP_NAME)
 
-        self._capture_action = QAction("截图", self)
+        self._capture_action = QAction(self)
         self._capture_action.triggered.connect(self.request_capture)
 
-        self._toggle_button_action = QAction("隐藏悬浮按钮", self)
+        self._toggle_button_action = QAction(self)
         self._toggle_button_action.triggered.connect(self._toggle_floating_button_visibility)
 
-        self._size_menu = QMenu("悬浮窗大小")
+        self._size_menu = QMenu()
         self._size_action_group = QActionGroup(self)
         self._size_action_group.setExclusive(True)
         self._size_actions: dict[str, QAction] = {}
         for preset in ("small", "medium", "large"):
-            label = FLOATING_SIZE_PRESETS[preset]["label"]
-            action = QAction(label, self)
+            action = QAction(self)
             action.setCheckable(True)
             action.triggered.connect(lambda checked, p=preset: self._apply_size_preset(p))
             self._size_action_group.addAction(action)
             self._size_menu.addAction(action)
             self._size_actions[preset] = action
 
-        self._autostart_action = QAction("开机启动", self)
+        self._autostart_action = QAction(self)
         self._autostart_action.setCheckable(True)
         self._autostart_action.toggled.connect(self._toggle_autostart)
 
-        self._hotkey_action = QAction("设置热键...", self)
-        self._hotkey_action.triggered.connect(self._open_hotkey_dialog)
+        self._settings_action = QAction(self)
+        self._settings_action.triggered.connect(self._open_settings_dialog)
 
-        self._exit_action = QAction("退出", self)
+        self._exit_action = QAction(self)
         self._exit_action.triggered.connect(self._quit_application)
 
         self._menu = QMenu()
@@ -1204,7 +1685,7 @@ class TrayApp(QObject):
         self._menu.addMenu(self._size_menu)
         self._menu.addSeparator()
         self._menu.addAction(self._autostart_action)
-        self._menu.addAction(self._hotkey_action)
+        self._menu.addAction(self._settings_action)
         self._menu.addSeparator()
         self._menu.addAction(self._exit_action)
         self._tray_icon.setContextMenu(self._menu)
@@ -1225,7 +1706,7 @@ class TrayApp(QObject):
         self._sync_autostart_action()
         self._sync_toggle_button_action()
         self._sync_size_actions()
-        self._sync_hotkey_action()
+        self._retranslate_ui()
 
         self._place_floating_button()
         self._floating_button.show()
@@ -1235,10 +1716,7 @@ class TrayApp(QObject):
         self._tray_icon.show()
 
         if not hotkey_registered:
-            warning_message = (
-                f"无法注册当前热键 {initial_hotkey.display_text}。\n"
-                "你仍可通过悬浮窗或系统托盘进行截图，并可在“设置热键...”中改为其他组合键。"
-            )
+            warning_message = self._tr("message.hotkey_unavailable", hotkey=initial_hotkey.display_text)
             QTimer.singleShot(0, lambda: show_warning_dialog(warning_message))
 
     def cleanup(self) -> None:
@@ -1263,7 +1741,7 @@ class TrayApp(QObject):
         QTimer.singleShot(0, self._start_capture_now)
 
     def _start_capture_now(self) -> None:
-        if self._capture_controller.start_capture():
+        if self._capture_controller.start_capture(self._capture_mode, self._language):
             return
 
         if self._restore_button_after_capture and not self._floating_hidden_by_user:
@@ -1297,22 +1775,29 @@ class TrayApp(QObject):
             self._autostart_manager.set_enabled(enabled)
         except OSError as exc:
             print(f"Unable to update autostart setting: {exc}", file=sys.stderr)
-            show_error_dialog("更新开机启动设置失败。")
+            show_error_dialog(self._tr("error.autostart_update_failed"))
         finally:
             self._sync_autostart_action()
 
-    def _open_hotkey_dialog(self) -> None:
-        dialog = HotkeySettingsDialog(self._hotkey_manager.current_hotkey, self._floating_button)
+    def _open_settings_dialog(self) -> None:
+        dialog = SettingsDialog(
+            self._language,
+            self._capture_mode,
+            self._hotkey_manager.current_hotkey,
+            self._hotkey_manager.is_registered(),
+            self._hotkey_manager.apply_hotkey,
+            self._floating_button,
+        )
         if dialog.exec_() != QDialog.Accepted:
             return
 
+        self._language = dialog.selected_language()
+        self._capture_mode = dialog.selected_capture_mode()
         hotkey = dialog.selected_hotkey()
-        if self._hotkey_manager.apply_hotkey(hotkey):
-            self._settings_manager.save_hotkey(hotkey)
-            self._sync_hotkey_action()
-            return
-
-        show_error_dialog(f"热键 {hotkey.display_text} 已被其他程序占用，请选择其他组合键。")
+        self._settings_manager.save_ui_language(self._language)
+        self._settings_manager.save_capture_mode(self._capture_mode)
+        self._settings_manager.save_hotkey(hotkey)
+        self._retranslate_ui()
 
     def _apply_size_preset(self, preset: str) -> None:
         preset = normalize_size_preset(preset)
@@ -1351,9 +1836,9 @@ class TrayApp(QObject):
 
     def _sync_toggle_button_action(self) -> None:
         if self._floating_hidden_by_user:
-            self._toggle_button_action.setText("显示悬浮按钮")
+            self._toggle_button_action.setText(self._tr("menu.toggle_button.show"))
         else:
-            self._toggle_button_action.setText("隐藏悬浮按钮")
+            self._toggle_button_action.setText(self._tr("menu.toggle_button.hide"))
 
     def _sync_size_actions(self) -> None:
         current_preset = self._floating_button.current_preset
@@ -1362,12 +1847,16 @@ class TrayApp(QObject):
             action.setChecked(preset == current_preset)
             action.blockSignals(False)
 
-    def _sync_hotkey_action(self) -> None:
-        hotkey = self._hotkey_manager.current_hotkey
-        suffix = hotkey.display_text
-        if not self._hotkey_manager.is_registered():
-            suffix += "（未激活）"
-        self._hotkey_action.setText(f"设置热键...  当前：{suffix}")
+    def _retranslate_ui(self) -> None:
+        self._capture_action.setText(self._tr("menu.capture"))
+        self._size_menu.setTitle(self._tr("menu.size"))
+        self._autostart_action.setText(self._tr("menu.autostart"))
+        self._settings_action.setText(self._tr("menu.settings"))
+        self._exit_action.setText(self._tr("menu.exit"))
+        for preset, action in self._size_actions.items():
+            action.setText(self._tr(f"menu.size.{preset}"))
+        self._floating_button.setToolTip(self._tr("tooltip.floating_button"))
+        self._sync_toggle_button_action()
 
     def _quit_application(self) -> None:
         self._tray_icon.hide()
@@ -1375,6 +1864,9 @@ class TrayApp(QObject):
 
     def _build_icon(self) -> QIcon:
         return self._floating_asset.tray_icon()
+
+    def _tr(self, key: str, **kwargs) -> str:
+        return tr(self._language, key, **kwargs)
 
 
 def main() -> int:
@@ -1394,7 +1886,7 @@ def main() -> int:
         tray_app = TrayApp(app)
     except Exception as exc:
         print(f"Initialization failed: {exc}", file=sys.stderr)
-        show_error_dialog(str(exc))
+        show_error_dialog(current_tr("error.initialization_failed", error=exc))
         return 1
 
     app._tray_app = tray_app
